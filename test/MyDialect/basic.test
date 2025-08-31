@@ -1,0 +1,17 @@
+// test/MyDialect/basic.test
+// 测试1：合法的AddOp
+// RUN: mlir-opt %s -verify-diagnostics | FileCheck %s
+
+func.func @test_add() -> i32 {
+  // CHECK: my.add 1, 2 : i32 -> i32
+  %0 = my.add 1, 2 : i32 -> i32
+  return %0 : i32
+}
+
+// 测试2：非法的AddOp（操作数类型不匹配，应报错）
+// RUN: mlir-opt %s -verify-diagnostics 2>&1 | FileCheck %s --check-prefix=ERROR
+func.func @test_add_invalid() -> i32 {
+  // ERROR: operands must have the same type
+  %0 = my.add 1 : i32, 2 : i64 -> i32
+  return %0 : i32
+}
