@@ -1,0 +1,1 @@
+message("nptNSEq is not implemented.")

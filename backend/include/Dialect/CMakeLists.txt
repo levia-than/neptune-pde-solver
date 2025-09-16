@@ -1,2 +1,0 @@
-add_subdirectory(nptExp)
-add_subdirectory(nptImpl)

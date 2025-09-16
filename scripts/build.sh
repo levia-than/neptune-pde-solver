@@ -14,6 +14,7 @@ set -euo pipefail
 #   LLVM_TAG              - 要 clone 的 llvm tag，默认: llvmorg-21.0.0
 #   LLVM_ENABLE_PROJECTS  - 要构建的 llvm projects，默认: mlir
 #   LLVM_TARGETS_TO_BUILD - targets，默认: Host
+#   BUILD_TYPE            - 构建类型，默认: Release (可设置为 Debug)
 
 # ---------------- defaults ----------------
 : "${NINJA_JOBS:=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
@@ -22,6 +23,8 @@ set -euo pipefail
 : "${LLVM_TAG:=llvmorg-21.0.0}"
 : "${LLVM_ENABLE_PROJECTS:=mlir}"
 : "${LLVM_TARGETS_TO_BUILD:=host}"
+: "${LLVM_BUILD_TYPE:=Release}"
+: "${PROJECT_BUILD_TYPE:=Release}"
 : "${BUILD_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build}"
 
 # ---------------- parse args ----------------
@@ -49,6 +52,8 @@ echo "Build root (all artifacts here): ${BUILD_ROOT}"
 echo "LLVM tag: ${LLVM_TAG}"
 echo "LLVM projects: ${LLVM_ENABLE_PROJECTS}"
 echo "LLVM targets: ${LLVM_TARGETS_TO_BUILD}"
+echo "LLVM build type: ${LLVM_BUILD_TYPE}"
+echo "Project build type: ${PROJECT_BUILD_TYPE}"
 echo "Ninja jobs: ${NINJA_JOBS}"
 echo "CCACHE_DIR: ${CCACHE_DIR} (max ${CCACHE_MAXSIZE})"
 echo
@@ -128,20 +133,25 @@ fi
 echo
 
 # ---------------- 1) Configure & build LLVM (out-of-source) ----------------
-mkdir -p "${LLVM_BUILD_DIR}"
-echo "Configuring LLVM build (source: ${LLVM_SRC_DIR}, build: ${LLVM_BUILD_DIR})..."
-cmake -G Ninja \
-  -S "${LLVM_SRC_DIR}" \
-  -B "${LLVM_BUILD_DIR}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL_DIR}" \
-  -DLLVM_ENABLE_PROJECTS="${LLVM_ENABLE_PROJECTS}" \
-  -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD}" \
-  -DLLVM_CCACHE_BUILD=true \
-  -DLLVM_ENABLE_LLD=${ENABLE_LLD} \
-  -DLLVM_BUILD_TESTS=OFF \
-  -DCMAKE_C_COMPILER="${CC_CANDIDATE}" \
-  -DCMAKE_CXX_COMPILER="${CXX_CANDIDATE}"
+if [ ! -f "${LLVM_BUILD_DIR}/build.ninja" ]; then
+  echo "Configuring LLVM build (source: ${LLVM_SRC_DIR}, build: ${LLVM_BUILD_DIR})..."
+  cmake -G Ninja \
+    -S "${LLVM_SRC_DIR}" \
+    -B "${LLVM_BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE="${LLVM_BUILD_TYPE}" \
+    -DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL_DIR}" \
+    -DLLVM_ENABLE_PROJECTS="${LLVM_ENABLE_PROJECTS}" \
+    -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD}" \
+    -DLLVM_CCACHE_BUILD=true \
+    -DLLVM_ENABLE_LLD=${ENABLE_LLD} \
+    -DLLVM_INSTALL_UTILS=ON \
+    -DLLVM_INCLUDE_TESTS=ON \
+    -DLLVM_BUILD_TESTS=OFF \
+    -DCMAKE_C_COMPILER="${CC_CANDIDATE}" \
+    -DCMAKE_CXX_COMPILER="${CXX_CANDIDATE}"
+else
+  echo "LLVM build already configured. Skipping..."
+fi
 
 echo
 echo "Building + installing LLVM (this may take a while)..."
@@ -150,16 +160,21 @@ echo "LLVM installed to: ${LLVM_INSTALL_DIR}"
 echo
 
 # ---------------- 2) Configure & build top-level project (use installed LLVM) ----------------
-mkdir -p "${TOP_BUILD_DIR}"
-echo "Configuring top-level project (build dir: ${TOP_BUILD_DIR})..."
-cmake -G Ninja \
-  -S "${REPO_ROOT}" \
-  -B "${TOP_BUILD_DIR}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm" \
-  -DMLIR_DIR="${LLVM_INSTALL_DIR}/lib/cmake/mlir" \
-  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+if [ ! -f "${TOP_BUILD_DIR}/build.ninja" ]; then
+  echo "Configuring top-level project (build dir: ${TOP_BUILD_DIR})..."
+  cmake -G Ninja \
+    -S "${REPO_ROOT}" \
+    -B "${TOP_BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE="${PROJECT_BUILD_TYPE}" \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DLLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm" \
+    -DMLIR_DIR="${LLVM_INSTALL_DIR}/lib/cmake/mlir" \
+    -DLLVM_EXTERNAL_LIT="${LLVM_BUILD_DIR}/bin/llvm-lit" \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+else
+  echo "Top-level project already configured. Skipping..."
+fi
 
 echo
 echo "Building top-level project..."
@@ -172,6 +187,13 @@ if [ -d "${REPO_ROOT}/test" ]; then
   ctest --test-dir "${TOP_BUILD_DIR}" --output-on-failure -j"${NINJA_JOBS}" || {
     echo "Some tests failed (see above)."
   }
+fi
+
+# [NEW] Create a symlink to compile_commands.json in the project root
+if [ -f "${TOP_BUILD_DIR}/compile_commands.json" ]; then
+    echo "Creating symlink for compile_commands.json..."
+    ln -sf "${TOP_BUILD_DIR}/compile_commands.json" "${REPO_ROOT}/compile_commands.json"
+    echo "Symlink created at ${REPO_ROOT}/compile_commands.json"
 fi
 
 echo

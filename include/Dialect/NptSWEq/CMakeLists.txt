@@ -1,0 +1,1 @@
+message("nptSWEq is not implemented.")
