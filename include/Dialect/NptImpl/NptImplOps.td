@@ -1,6 +1,7 @@
 #ifndef NPTIMPL_NPTIMPL_OPS_TD
 #define NPTIMPL_NPTIMPL_OPS_TD
 
+include "mlir/IR/OpBase.td"
 include "NptImplDialect.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -33,6 +34,10 @@ def NptImpl_PolyMeshOp : NptImpl_Op<"poly_mesh", []> {
     );
 
     let results = (outs);
+
+    let assemblyFormat = [{
+        `(` ($values^ `:` type($values))? `)` attr-dict
+    }];
 
     let hasVerifier = 1;
 }

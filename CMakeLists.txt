@@ -1,17 +1,16 @@
-# MyMLIRProject/CMakeLists.txt
 cmake_minimum_required(VERSION 3.20)
-project(MyMLIRProject LANGUAGES CXX C)
+project(NeptuneSolver LANGUAGES CXX C)
 
-# 1. 优先构建third_party的MLIR
-# add_subdirectory(third_party)
-
-# 2. 查找已安装的LLVM和MLIR（依赖third_party的安装结果）
 find_package(LLVM REQUIRED CONFIG)
 find_package(MLIR REQUIRED CONFIG)
+
+set(LLVM_LIT_ARGS "-sv" CACHE STRING "Default options for lit")
 
 # 3. 配置编译选项（与MLIR对齐）
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(NEPTUNE_BINARY_DIR "${PROJECT_BINARY_DIR}")
+set(NEPTUNE_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 
 # 4. 配置头文件路径
@@ -29,6 +28,9 @@ include(AddLLVM)           # LLVM编译辅助
 include(AddMLIR)           # MLIR编译辅助
 include(HandleLLVMOptions) # LLVM编译选项
 
+link_directories(${LLVM_BUILD_LIBRARY_DIR})
+add_definitions(${LLVM_DEFINITIONS})
+
 # 6. 添加自定义源码（Dialect/Pass）
 add_subdirectory(include)
 add_subdirectory(lib)
@@ -38,8 +40,4 @@ add_subdirectory(src)
 # add_subdirectory(frontend)
 
 # 8. 添加测试（可选，需启用BUILD_TESTING）
-option(BUILD_TESTING "Enable Testing" ON)
-if(BUILD_TESTING)
-  enable_testing()
-  add_subdirectory(test)
-endif()
+add_subdirectory(test)

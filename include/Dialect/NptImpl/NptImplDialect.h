@@ -2,6 +2,7 @@
 #define NPTIMPL_NPTIMPLDIALECT_H
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/BuiltinDialect.h"
 
 #include "Dialect/NptImpl/NptImplOpsDialect.h.inc"
 

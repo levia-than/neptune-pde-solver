@@ -12,7 +12,9 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::arith::ArithDialect>();
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::Neptune::NptImpl::NptImplDialect,
+              mlir::func::FuncDialect>();
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Neptune optimizer driver.\n", registry));
 }

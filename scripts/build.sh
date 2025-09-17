@@ -170,6 +170,7 @@ if [ ! -f "${TOP_BUILD_DIR}/build.ninja" ]; then
     -DLLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm" \
     -DMLIR_DIR="${LLVM_INSTALL_DIR}/lib/cmake/mlir" \
     -DLLVM_EXTERNAL_LIT="${LLVM_BUILD_DIR}/bin/llvm-lit" \
+    -DCMAKE_INSTALL_PREFIX="${TOP_BUILD_DIR}" \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 else
@@ -178,13 +179,13 @@ fi
 
 echo
 echo "Building top-level project..."
-cmake --build "${TOP_BUILD_DIR}" -- -j"${NINJA_JOBS}"
+cmake --build "${TOP_BUILD_DIR}" --target install -j"${NINJA_JOBS}"
 
 # ---------------- 3) run tests if present ----------------
 if [ -d "${REPO_ROOT}/test" ]; then
   echo
-  echo "Running tests with ctest..."
-  ctest --test-dir "${TOP_BUILD_DIR}" --output-on-failure -j"${NINJA_JOBS}" || {
+  echo "Running tests with cmake&lit..."
+  cmake --build "${TOP_BUILD_DIR}" --target check-neptune -j"${NINJA_JOBS}" || {
     echo "Some tests failed (see above)."
   }
 fi
