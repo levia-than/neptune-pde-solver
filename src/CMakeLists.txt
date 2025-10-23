@@ -1,7 +1,8 @@
 set(LIBS
     MLIROptLib
     MLIRCAPIRegisterEverything
-    MLIRNeptuneImpl
+    MLIRNeptuneIR
+    MLIRNeptuneIRTransforms
 )
 
 add_llvm_executable(neptune-opt neptune.cpp)
