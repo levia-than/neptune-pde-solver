@@ -27,29 +27,6 @@
 // Dialect-level implementation (parse/print helpers, dialect ctor if generated)
 #include "Dialect/NeptuneIR/NeptuneIROpsDialect.cpp.inc"
 
-
-// Helper: check that an Attribute is an ArrayAttr of IntegerAttr.
-// static bool isArrayOfIntegerAttr(Attribute attr) {
-//   if (!attr) return false;
-
-
-//   if (auto arr = dyn_cast<ArrayAttr>(attr)) {
-//     for (auto a : arr.getValue()) {
-//       if (!isa<IntegerAttr>(a))
-//         return false;
-//     }
-//     return true;
-//   }
-//   return false;
-// }
-
-// Helper: simple check whether a Type looks like a memref-like storage.
-// Be conservative: recognize MemRefType explicitly; other types (e.g. DescriptorType)
-// are accepted by caller if desired.
-// static bool isMemRefLikeType(Type t) {
-//   return isa<MemRefType>(t);
-// }
-
 using namespace mlir;
 using namespace mlir::Neptune::NeptuneIR;
 

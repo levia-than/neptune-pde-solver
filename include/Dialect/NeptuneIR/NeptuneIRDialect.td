@@ -7,7 +7,7 @@ def NeptuneIR_Dialect : Dialect {
     let name = "neptune_ir";
     let cppNamespace = "::mlir::Neptune::NeptuneIR";
     let summary = "neptune ir";
-    let useDefaultTypePrinterParser = 1;
+    let useDefaultTypePrinterParser = true;
 }
 
 class NeptuneIR_Op<string mnemonic, list<Trait> traits = []> :

@@ -48,17 +48,6 @@ def FieldElementRefType : NeptuneIR_Type<"FieldElementRef", "field_elem"> {
   }];
 }
 
-// ------------------------------------------------------------------
-// Module: symbol table root for storages / kernels if you choose to hold names here
-def NeptuneIR_CalModuleOp : NeptuneIR_Op<"cal_module"> {
-  let summary = "NeptuneIR module: top-level container for functions/kernels.";
-  let description = [{
-    The module is a simple container for functions/kernels. Metadata such as named
-    storage declarations can be placed here as attributes or module-level ops if needed.
-  }];
-  let regions = (region AnyRegion:$body);
-}
-
 // FieldRef: per-element symbolic reference into a provided storage Value.
 // The first operand should be a memref Value or an opaque Descriptor value.
 // Subsequent operands are index Values (typically Index type) describing the logical indices.
@@ -66,7 +55,7 @@ def NeptuneIR_FieldRefOp : NeptuneIR_Op<"field.ref", [NoMemoryEffect]> {
   let summary = "Per-element reference into a provided storage value (memref/descriptor).";
   let arguments = (ins AnyType:$storageValue, Variadic<Index>:$indices);
   let results = (outs FieldElementRefType:$elem);
-  let assemblyFormat = "$storageValue `[` $indices `]` `:` type($storageValue) `->` type($elem) `{` attr-dict `}`";
+  let assemblyFormat = "$storageValue `[` $indices `]` `:` type($storageValue) `->` type($elem) attr-dict ";
   let description = [{
     %e = neptune_ir.field.ref %storage, %i, %j : returns a symbolic element ref.
     The storage operand is a Value (memref or descriptor) rather than a symbol.
@@ -74,30 +63,48 @@ def NeptuneIR_FieldRefOp : NeptuneIR_Op<"field.ref", [NoMemoryEffect]> {
   }];
 }
 
+// def NeptuneIR_TimeLoopOp : NeptuneIR_Op<"time.loop"> {
+//   let summary = "Time-stepping loop with constant dt attribute.";
+//   let arguments = (ins Index:$t_start, Index:$t_end, F64Attr:$dt);
+//   let regions = (region AnyRegion:$body);
+//   let assemblyFormat = "$t_start `=` $t_end `,` $t_step `:` type($t_start) `,` type($t_end) `,` type($t_step) attr-dict $body";
+// }
+
+// def NeptuneIR_MeshLoopOp : NeptuneIR_Op<"mesh.loop"> {
+//   let summary = "Mesh loop.";
+//   let arguments = (ins Index:$i_start, Index:$i_end, Index:$t_step);
+//   let regions = (region AnyRegion:$body);
+//   let assemblyFormat = "$i_start `,` $i_end `,` $i_step `:` type($i_start) `,` type($i_end) `,` type($i_step) attr-dict $body";
+// }
+
 // Field-level binary ops (symbolic): these accept and produce FieldElementRefType.
 // They represent per-element algebraic operations in the symbolic layer.
 def NeptuneIR_FieldAddOp : NeptuneIR_Op<"field.add", [NoMemoryEffect]> {
   let summary = "Symbolic per-element add: res = lhs + rhs";
   let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
   let results = (outs FieldElementRefType:$res);
+  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
 }
 
 def NeptuneIR_FieldSubOp : NeptuneIR_Op<"field.sub", [NoMemoryEffect]> {
   let summary = "Symbolic per-element subtract: res = lhs - rhs";
   let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
   let results = (outs FieldElementRefType:$res);
+  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
 }
 
 def NeptuneIR_FieldMulOp : NeptuneIR_Op<"field.mul", [NoMemoryEffect]> {
   let summary = "Symbolic per-element multiply: res = lhs * rhs";
   let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
   let results = (outs FieldElementRefType:$res);
+  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
 }
 
 def NeptuneIR_FieldDivOp : NeptuneIR_Op<"field.div", [NoMemoryEffect]> {
   let summary = "Symbolic per-element divide: res = lhs / rhs";
   let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
   let results = (outs FieldElementRefType:$res);
+  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
 }
 
 // Scalar scaling by a FloatAttr constant (symbolic)
@@ -109,6 +116,7 @@ def NeptuneIR_FieldScaleOp : NeptuneIR_Op<"field.scale", [NoMemoryEffect]> {
     The scalar is a FloatAttr on the op, representing a compile-time constant.
     If you need runtime scalars, consider exposing a scalar Value operand instead.
   }];
+  let assemblyFormat = "$lhs attr-dict `:` type($lhs) `->` type($res)";
 }
 
 // Evaluate: materialize a symbolic expression into a provided destination Value.
@@ -121,7 +129,7 @@ def NeptuneIR_EvaluateOp : NeptuneIR_Op<"evaluate"> {
     Lowering of evaluate generates nested loops that perform memref.load/arith/memref.store,
     writing the element-level result into the provided destination storage Value.
   }];
-  let assemblyFormat = "$dstValue `:` type($dstValue) `,` $expr `:` type($expr) `{` attr-dict `}`";
+  let assemblyFormat = "$dstValue `,` $expr `:` type($dstValue) `,` type($expr) attr-dict ";
 }
 
 // Swap: semantic swap of two storage values (memref/descriptor).
@@ -134,6 +142,7 @@ def NeptuneIR_SwapOp : NeptuneIR_Op<"swap"> {
     or a copy (e.g., for incompatible layouts). Optional debugging/print features
     can be implemented as runtime calls inserted by lowering.
   }];
+  let assemblyFormat = "$aValue `,` $bValue `:` type($aValue) `,` type($bValue) attr-dict ";
 }
 
 // Optional: utility ops for reading/writing descriptor metadata (device id, stride, etc).

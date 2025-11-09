@@ -3,9 +3,24 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LowerEvaluateToLoop : Pass<"lower-evaluate-to-loop"> {
-    let summary = "convert toy to arith";
-    let constructor = "::mlir::Neptune::NeptuneIR::createLowerEvaluateToLoopPass()";
+def LowerEvaluateToRealCompute : Pass<"lower-evaluate-to-real-compute"> {
+    let summary = "lower evaluate ops to real compute";
+    let dependentDialects = [
+        "mlir::scf::SCFDialect", 
+        "mlir::memref::MemRefDialect", 
+        "mlir::arith::ArithDialect", 
+        "mlir::func::FuncDialect"
+    ];
+}
+
+def SymbolicSimplify : Pass<"symbolic-simplify"> {
+    let summary = "simplify expressions symbolically";
+    let dependentDialects = [
+        "mlir::scf::SCFDialect", 
+        "mlir::memref::MemRefDialect", 
+        "mlir::arith::ArithDialect", 
+        "mlir::func::FuncDialect"
+    ];
 }
 
 #endif
