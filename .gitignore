@@ -3,3 +3,6 @@
 build/
 .cache/
 compile_commands.json
+.vscode/
+__pycache__/
+*.egg-info/

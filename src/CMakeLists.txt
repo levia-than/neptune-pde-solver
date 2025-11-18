@@ -14,7 +14,8 @@ set(LIBS
     MLIRNeptuneIRTransforms
 )
 
-add_llvm_executable(neptune-opt neptuneOpt.cpp)
+add_llvm_executable(neptune-opt neptuneOpt.cpp
+    PARTIAL_SOURCES_INTENDED)
 
 llvm_update_compile_flags(neptune-opt)
 target_link_libraries(neptune-opt PRIVATE ${LIBS})

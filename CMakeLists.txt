@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
 project(NeptuneSolver LANGUAGES CXX C)
 
+if(POLICY CMP0148)
+  cmake_policy(SET CMP0148 OLD)
+endif()
+
+if(CMAKE_GENERATOR STREQUAL "Ninja")
+  set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON CACHE BOOL "" FORCE)
+endif()
+
+enable_testing()
+
 find_package(LLVM REQUIRED CONFIG)
 find_package(MLIR REQUIRED CONFIG)
 
@@ -36,8 +46,5 @@ add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(src)
 
-# 7. 前端引入，当前为空
-# add_subdirectory(frontend)
-
-# 8. 添加测试（可选，需启用BUILD_TESTING）
+# 7. 添加测试（可选，需启用BUILD_TESTING）
 add_subdirectory(test)

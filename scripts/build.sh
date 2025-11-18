@@ -3,8 +3,10 @@ set -euo pipefail
 
 # build.sh -- 将所有构建集中到 repo_root/build 下（支持 LLVM21.x、ccache、lld 检测）
 # Usage:
-#   ./scripts/build.sh              # 正常构建
+#   ./scripts/build.sh              # 正常构建 (默认 mode=all)
 #   ./scripts/build.sh --clean      # 清理 build_root 下的所有构建产物
+#   ./scripts/build.sh -m neptune   # 仅构建 C++/Neptune 可执行与库
+#   ./scripts/build.sh -m all       # 全部构建
 #
 # Env overrides:
 #   BUILD_ROOT            - 默认: <repo_root>/build
@@ -29,9 +31,36 @@ set -euo pipefail
 
 # ---------------- parse args ----------------
 CLEAN_ONLY=0
-if [ "${1:-}" = "--clean" ] || [ "${1:-}" = "-c" ]; then
-  CLEAN_ONLY=1
-fi
+BUILD_MODE="all"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -c|--clean)
+      CLEAN_ONLY=1
+      shift
+      ;;
+    -m|--mode)
+      BUILD_MODE="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      echo "Usage: $0 [--clean] [-m {neptune|all}]"
+      exit 1
+      ;;
+  esac
+done
+
+case "${BUILD_MODE}" in
+  neptune|all)
+    BUILD_TARGET="install"
+    ;;
+  *)
+    echo "Invalid build mode: ${BUILD_MODE}"
+    echo "Supported modes: neptune, all"
+    exit 1
+    ;;
+esac
 
 # ---------------- paths ----------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +78,7 @@ TOP_BUILD_DIR="${BUILD_ROOT}/project-build"
 echo "=== MyMLIRProject build helper ==="
 echo "Repo root: ${REPO_ROOT}"
 echo "Build root (all artifacts here): ${BUILD_ROOT}"
+echo "Build mode: ${BUILD_MODE}"
 echo "LLVM tag: ${LLVM_TAG}"
 echo "LLVM projects: ${LLVM_ENABLE_PROJECTS}"
 echo "LLVM targets: ${LLVM_TARGETS_TO_BUILD}"
@@ -179,7 +209,7 @@ fi
 
 echo
 echo "Building top-level project..."
-cmake --build "${TOP_BUILD_DIR}" --target install -j"${NINJA_JOBS}"
+cmake --build "${TOP_BUILD_DIR}" --target "${BUILD_TARGET}" -j"${NINJA_JOBS}"
 
 # ---------------- 3) run tests if present ----------------
 if [ -d "${REPO_ROOT}/test" ]; then

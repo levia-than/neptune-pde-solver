@@ -21,9 +21,8 @@ module {
 		%c1 = arith.constant 1 : index
 		%c15 = arith.constant 15 : index
 		%start = arith.addi %c0, %c1 : index
-		%end = arith.subi %c15, %c1 : index
 		
-		scf.for %i = %start to %end step %c1 : index {
+		scf.for %i = %start to %c15 step %c1 : index {
 			%ni_1 = arith.addi %i, %c1 : index
 			%ni_2 = arith.subi %i, %c1 : index
 			%fe_i = neptune_ir.field.ref %u_old[%i] : memref<16xf64> -> !neptune_ir.field_elem<etype=f64> 
@@ -71,19 +70,19 @@ module {
 			func.call @heat_sim_single_step_kernel(%u_old, %u_new) : (memref<16xf64>, memref<16xf64>) -> ()
 		}
 
-		%is_total_time_odd_idx = arith.remui %total_time, %c2 : index
-		%is_total_time_odd = arith.cmpi eq, %is_total_time_odd_idx, %c0 : index
+		%total_time_mod = arith.remui %total_time, %c2 : index
+		%is_total_time_even = arith.cmpi eq, %total_time_mod, %c0 : index
 
-		%final_result = scf.if %is_total_time_odd -> (memref<16xf64>) {
-			scf.yield %pong_buf : memref<16xf64>
-		} else {
+		%final_result = scf.if %is_total_time_even -> (memref<16xf64>) {
 			scf.yield %ping_buf : memref<16xf64>
+		} else {
+			scf.yield %pong_buf : memref<16xf64>
 		}
 
-		scf.if %is_total_time_odd {
-			memref.dealloc %ping_buf : memref<16xf64>
-		} else {
+		scf.if %is_total_time_even {
 			memref.dealloc %pong_buf : memref<16xf64>
+		} else {
+			memref.dealloc %ping_buf : memref<16xf64>
 		}
 
 		return %final_result : memref<16xf64>

@@ -2,7 +2,7 @@
  * @Author: leviathan 670916484@qq.com
  * @Date: 2025-09-15 17:24:54
  * @LastEditors: leviathan 670916484@qq.com
- * @LastEditTime: 2025-11-09 15:07:35
+ * @LastEditTime: 2025-11-10 10:51:59
  * @FilePath: /neptune-pde-solver/src/neptuneOpt.cpp
  * @Description: The main opt module.
  *
@@ -34,8 +34,8 @@ using namespace mlir;
 using namespace mlir::Neptune::NeptuneIR;
 
 void neptunePipelineBuilder(mlir::OpPassManager &pm) {
-  pm.addNestedPass<func::FuncOp>(createSymbolicSimplify());
-  pm.addNestedPass<func::FuncOp>(createLowerEvaluateToRealCompute());
+  pm.addPass(createSymbolicSimplify());
+  pm.addPass(createLowerEvaluateToRealCompute());
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
