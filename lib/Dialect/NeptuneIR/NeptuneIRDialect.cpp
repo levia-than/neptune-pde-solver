@@ -8,13 +8,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Dialect/NeptuneIR/NeptuneIRAttrs.h"
 #include "Dialect/NeptuneIR/NeptuneIROps.h"
 #include "Dialect/NeptuneIR/NeptuneIRDialect.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/Support/TypeID.h"
-#include "llvm/ADT/TypeSwitch.h" 
+#include "llvm/ADT/TypeSwitch.h"
+
+#define GET_ATTRDEF_CLASSES
+#include "Dialect/NeptuneIR/NeptuneIROpsAttrDefs.cpp.inc"
 
 // Types implementation (TypeIDResolver etc.)
 #define GET_TYPEDEF_CLASSES
@@ -31,6 +35,11 @@ using namespace mlir;
 using namespace mlir::Neptune::NeptuneIR;
 
 void NeptuneIRDialect::initialize() {
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "Dialect/NeptuneIR/NeptuneIROpsAttrDefs.cpp.inc"
+      >();
+
   // Register types (this uses the GET_TYPEDEF_LIST part of the generated file)
   addTypes<
 #define GET_TYPEDEF_LIST

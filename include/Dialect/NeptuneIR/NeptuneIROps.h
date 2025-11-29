@@ -1,12 +1,24 @@
+/*
+ * @Author: leviathan 670916484@qq.com
+ * @Date: 2025-09-15 17:10:04
+ * @LastEditors: leviathan 670916484@qq.com
+ * @LastEditTime: 2025-11-27 18:45:00
+ * @FilePath: /neptune-pde-solver/include/Dialect/NeptuneIR/NeptuneIROps.h
+ * @Description: 
+ * 
+ * Copyright (c) 2025 by leviathan, All Rights Reserved. 
+ */
 #ifndef NEPTUNEIR_NEPTUNEIROPS_H
 #define NEPTUNEIR_NEPTUNEIROPS_H
 
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "Dialect/NeptuneIR/NeptuneIRAttrs.h"
 
 #define GET_TYPEDEF_CLASSES
 #include "Dialect/NeptuneIR/NeptuneIROpsTypes.h.inc"

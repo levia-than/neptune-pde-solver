@@ -1,6 +1,6 @@
 add_mlir_library(MLIRNeptuneIRTransforms
-    LowerEvaluateToRealCompute.cpp
-    SymbolicSimplify.cpp
+    NormalizeNeptuneIRStorage.cpp
+    NeptuneIRStencilToSCF.cpp
     DEPENDS MLIRNeptuneIRTransformsIncGen
 
     LINK_LIBS MLIRIR

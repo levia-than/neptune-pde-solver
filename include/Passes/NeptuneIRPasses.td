@@ -3,23 +3,25 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LowerEvaluateToRealCompute : Pass<"lower-evaluate-to-real-compute"> {
-    let summary = "lower evaluate ops to real compute";
+def NormalizeNeptuneIRStorage : Pass<"normalize-neptune-ir-storage"> {
+    let summary = "normalize neptune ir storage";
     let dependentDialects = [
         "mlir::scf::SCFDialect", 
         "mlir::memref::MemRefDialect", 
         "mlir::arith::ArithDialect", 
-        "mlir::func::FuncDialect"
+        "mlir::func::FuncDialect",
+        "Neptune::NeptuneIR::NeptuneIRDialect"
     ];
 }
 
-def SymbolicSimplify : Pass<"symbolic-simplify"> {
-    let summary = "simplify expressions symbolically";
+def NeptuneIRStencilToSCF : Pass<"neptune-ir-stencil-to-scf"> {
+    let summary = "neptune ir stencil to scf";
     let dependentDialects = [
-        "mlir::scf::SCFDialect", 
-        "mlir::memref::MemRefDialect", 
-        "mlir::arith::ArithDialect", 
-        "mlir::func::FuncDialect"
+        "mlir::scf::SCFDialect",
+        "mlir::memref::MemRefDialect",
+        "mlir::arith::ArithDialect",
+        "mlir::func::FuncDialect",
+        "Neptune::NeptuneIR::NeptuneIRDialect"
     ];
 }
 

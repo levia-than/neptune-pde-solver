@@ -2,7 +2,7 @@
  * @Author: leviathan 670916484@qq.com
  * @Date: 2025-09-15 17:24:54
  * @LastEditors: leviathan 670916484@qq.com
- * @LastEditTime: 2025-11-10 10:51:59
+ * @LastEditTime: 2025-11-29 12:19:11
  * @FilePath: /neptune-pde-solver/src/neptuneOpt.cpp
  * @Description: The main opt module.
  *
@@ -25,6 +25,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "Dialect/NeptuneIR/NeptuneIRAttrs.h"
 #include "Dialect/NeptuneIR/NeptuneIRDialect.h"
 #include "Dialect/NeptuneIR/NeptuneIROps.h"
 #include "Passes/NeptuneIRPasses.h"
@@ -34,8 +35,8 @@ using namespace mlir;
 using namespace mlir::Neptune::NeptuneIR;
 
 void neptunePipelineBuilder(mlir::OpPassManager &pm) {
-  pm.addPass(createSymbolicSimplify());
-  pm.addPass(createLowerEvaluateToRealCompute());
+  pm.addPass(createNormalizeNeptuneIRStorage());
+  pm.addPass(createNeptuneIRStencilToSCF());
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());

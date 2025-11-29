@@ -8,6 +8,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "Dialect/NeptuneIR/NeptuneIRAttrs.h"
 #include "Dialect/NeptuneIR/NeptuneIROps.h"
 #include <memory>
 

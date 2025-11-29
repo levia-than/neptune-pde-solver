@@ -1,164 +1,224 @@
 #ifndef NEPTUNEIR_NEPTUNEIROPS_TD
 #define NEPTUNEIR_NEPTUNEIROPS_TD
 
-// === NeptuneIR core ops/types (symbols + field-expr primitives) ===
-// Append this file to your existing NeptuneIR .td set. It expects the
-// NeptuneIR_Dialect and NeptuneIR_Type helper you already defined.
-//
-// Important includes for Symbol traits & builtin Attr/Types:
-include "mlir/IR/Interfaces.td"          // SymbolOpInterface etc.
+include "mlir/IR/OpBase.td"
+include "mlir/IR/Interfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
-include "mlir/IR/BuiltinAttributes.td"   // FlatSymbolRefAttr, SymbolNameAttr, FloatAttr
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "NeptuneIRDialect.td"
+include "NeptuneIRAttrs.td"
+include "NeptuneIRTypes.td"
 
-
-// ------------------------------------------------------------------
-// Opaque runtime descriptor type: allows passing a descriptor Value if desired.
-// Example: host/device pointer, strides, shape, device id, etc.
-def DescriptorType : NeptuneIR_Type<"Descriptor", "desc"> {
-  let summary = "Opaque runtime descriptor type for storage (device pointer/metadata).";
-  let parameters = (ins "IntegerAttr":$device, "ArrayAttr":$shape);
-  let assemblyFormat = "`<` `device` `=` $device `,` `shape` `=` $shape `>`";
+//------------------------------------------------------------------------------
+// neptune_ir.wrap
+//------------------------------------------------------------------------------
+//
+// neptune_ir.wrap %buffer : memref<...> -> !neptune_ir.field<...>
+//
+def NeptuneIR_WrapOp
+    : NeptuneIR_Op<"wrap", [Pure]> {
+  let summary = "wrap a buffer (e.g., memref) into a Neptune field";
   let description = [{
-    Example textual forms:
-      !neptune_ir.desc
-      !neptune_ir.desc<device=0>
-      !neptune_ir.desc<device=0,shape=[128,256]>
+    Wrap a buffer-like value (typically a memref) into a `FieldType`.
+    This is the entry point from buffer-level IR into NeptuneIR.
+  }];
 
-    The parameters are optional at the textual level; the generated parser will
-    accept the angle-bracket form. If you need stronger invariants or custom
-    uniquing of the parameters, implement a TypeStorage in C++ (the ODS will
-    still generate the parse/print glue).
+  let arguments = (ins AnyMemRef:$buffer);
+  let results   = (outs NeptuneIR_FieldType:$var_field);
+
+  let assemblyFormat = [{
+    $buffer attr-dict `:` type($buffer) `->` type($var_field)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//------------------------------------------------------------------------------
+// neptune_ir.unwrap
+//------------------------------------------------------------------------------
+//
+// neptune_ir.unwrap %field : !neptune_ir.field<...> -> memref<...>
+//
+def NeptuneIR_UnwrapOp
+    : NeptuneIR_Op<"unwrap", [NoMemoryEffect]> {
+  let summary = "unwrap a Neptune field back to a buffer";
+  let description = [{
+    Inverse of `neptune_ir.wrap`. Used when lowering NeptuneIR back to
+    buffer-level dialects or interfacing with external code.
+  }];
+
+  let arguments = (ins NeptuneIR_FieldType:$var_field);
+  let results   = (outs AnyMemRef:$buffer);
+
+  let assemblyFormat = [{
+    $var_field attr-dict `:` type($var_field) `->` type($buffer)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//------------------------------------------------------------------------------
+// neptune_ir.load
+//------------------------------------------------------------------------------
+//
+// neptune_ir.load %field : !neptune_ir.field<...> -> !neptune_ir.temp<...>
+//
+def NeptuneIR_LoadOp
+    : NeptuneIR_Op<"load", [Pure]> {
+  let summary = "load a field into a value-semantics temp";
+  let description = [{
+    Load a `FieldType` into a `TempType`. Bounds and location of the temp
+    usually match those of the field.
+  }];
+
+  let arguments = (ins NeptuneIR_FieldType:$var_field);
+  let results   = (outs NeptuneIR_TempType:$result);
+
+  let assemblyFormat = [{
+    $var_field attr-dict `:` type($var_field) `->` type($result)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//------------------------------------------------------------------------------
+// neptune_ir.yield
+//------------------------------------------------------------------------------
+//
+// neptune_ir.yield %val : T
+//
+// apply region 的 terminator.
+//
+def NeptuneIR_YieldOp
+    : NeptuneIR_Op<"yield", [Terminator]> {
+  let summary = "yield scalar result(s) from an apply region";
+  let description = [{
+    Terminator of a `neptune_ir.apply` region. Usually yields a single
+    scalar (the updated value), but multiple results are also allowed.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    attr-dict ($results^ `:` type($results))?
   }];
 }
 
-// Field element reference type (symbolic element-level value).
-// This represents values in the high-level symbolic layer before lowering to scalars.
-def FieldElementRefType : NeptuneIR_Type<"FieldElementRef", "field_elem"> {
-  let summary = "High-level per-element reference into a Field (symbolic).";
-  let parameters = (ins "Type":$elemType);
-    // Examples:
-  //   !neptune_ir.field_elem
-  //   !neptune_ir.field_elem<etype=f32>
-  let assemblyFormat = "`<` `etype` `=` $elemType `>`";
+//------------------------------------------------------------------------------
+// neptune_ir.apply
+//------------------------------------------------------------------------------
+//
+// neptune_ir.apply (%arg0, %arg1, ...)
+//     { bounds = #neptune_ir.bounds<...>,
+//       shape? = #neptune_ir.stencil_shape<...> }
+//   : (!neptune_ir.temp<...>, ...) -> !neptune_ir.temp<...>
+//   {
+//     ^bb0(%i0 : index, %i1 : index, ...):
+//       %u = neptune_ir.access %arg0[0] : ... -> f64
+//       ...
+//       neptune_ir.yield %u_new : f64
+//   }
+//
+// 注意：SingleBlockImplicitTerminator = NeptuneIR_YieldOp
+//
+def NeptuneIR_ApplyOp
+    : NeptuneIR_Op<"apply",
+        [Pure, SingleBlock]> {
+  let summary = "structured stencil kernel over a domain";
   let description = [{
-    The `etype` parameter is an MLIR Type, e.g. f32, i32. If omitted the type
-    represents a generic field element (no stored scalar type).
+    `neptune_ir.apply` expresses a stencil kernel over a logical domain
+    (given by `bounds`). Inputs are Temp fields; the result is a Temp
+    field. Inside the region you only operate on scalars and use
+    `neptune_ir.access` to read neighbors.
+
+    Optionally, `shape` can encode the stencil pattern as a
+    `StencilShapeAttr`, which is convenient for optimization passes.
   }];
+
+  // operands
+  let arguments = (ins
+    Variadic<NeptuneIR_TempType>:$inputs,
+    NeptuneIR_BoundsAttr:$bounds,
+    OptionalAttr<NeptuneIR_StencilShapeAttr>:$shape
+  );
+
+  let results = (outs NeptuneIR_TempType:$result);
+
+  let regions = (region AnyRegion:$body);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` attr-dict-with-keyword
+      `:` functional-type($inputs, $result)
+      $body
+  }];
+
+  let hasVerifier = 1;
 }
 
-// FieldRef: per-element symbolic reference into a provided storage Value.
-// The first operand should be a memref Value or an opaque Descriptor value.
-// Subsequent operands are index Values (typically Index type) describing the logical indices.
-def NeptuneIR_FieldRefOp : NeptuneIR_Op<"field.ref", [NoMemoryEffect]> {
-  let summary = "Per-element reference into a provided storage value (memref/descriptor).";
-  let arguments = (ins AnyType:$storageValue, Variadic<Index>:$indices);
-  let results = (outs FieldElementRefType:$elem);
-  let assemblyFormat = "$storageValue `[` $indices `]` `:` type($storageValue) `->` type($elem) attr-dict ";
+//------------------------------------------------------------------------------
+// neptune_ir.access
+//------------------------------------------------------------------------------
+//
+// neptune_ir.access %tmp[<offsets>] : !neptune_ir.temp<...> -> elementType
+//
+def NeptuneIR_AccessOp
+    : NeptuneIR_Op<"access", [Pure]> {
+  let summary = "access a neighbor element from a temp at given offsets";
   let description = [{
-    %e = neptune_ir.field.ref %storage, %i, %j : returns a symbolic element ref.
-    The storage operand is a Value (memref or descriptor) rather than a symbol.
-    Lowering maps this op to memref.load with appropriate index math and halo offsets.
+    Access an element of a `TempType` at a compile-time constant offset
+    relative to the current logical point. Offsets are given as a
+    DenseI64ArrayAttr like [0], [-1], [1] in 1D, or [0,1,0] in 3D.
   }];
+
+  let arguments = (ins
+    NeptuneIR_TempType:$input,
+    DenseI64ArrayAttr:$offsets
+  );
+
+  // 实际上 result 类型应该等于 input.elementType，C++ verifier 里可以检查。
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = [{
+    $input $offsets attr-dict
+      `:` type($input) `->` type($result)
+  }];
+
+  let hasVerifier = 1;
 }
 
-// def NeptuneIR_TimeLoopOp : NeptuneIR_Op<"time.loop"> {
-//   let summary = "Time-stepping loop with constant dt attribute.";
-//   let arguments = (ins Index:$t_start, Index:$t_end, F64Attr:$dt);
-//   let regions = (region AnyRegion:$body);
-//   let assemblyFormat = "$t_start `=` $t_end `,` $t_step `:` type($t_start) `,` type($t_end) `,` type($t_step) attr-dict $body";
-// }
-
-// def NeptuneIR_MeshLoopOp : NeptuneIR_Op<"mesh.loop"> {
-//   let summary = "Mesh loop.";
-//   let arguments = (ins Index:$i_start, Index:$i_end, Index:$t_step);
-//   let regions = (region AnyRegion:$body);
-//   let assemblyFormat = "$i_start `,` $i_end `,` $i_step `:` type($i_start) `,` type($i_end) `,` type($i_step) attr-dict $body";
-// }
-
-// Field-level binary ops (symbolic): these accept and produce FieldElementRefType.
-// They represent per-element algebraic operations in the symbolic layer.
-def NeptuneIR_FieldAddOp : NeptuneIR_Op<"field.add", [NoMemoryEffect]> {
-  let summary = "Symbolic per-element add: res = lhs + rhs";
-  let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
-  let results = (outs FieldElementRefType:$res);
-  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
-}
-
-def NeptuneIR_FieldSubOp : NeptuneIR_Op<"field.sub", [NoMemoryEffect]> {
-  let summary = "Symbolic per-element subtract: res = lhs - rhs";
-  let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
-  let results = (outs FieldElementRefType:$res);
-  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
-}
-
-def NeptuneIR_FieldMulOp : NeptuneIR_Op<"field.mul", [NoMemoryEffect]> {
-  let summary = "Symbolic per-element multiply: res = lhs * rhs";
-  let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
-  let results = (outs FieldElementRefType:$res);
-  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
-}
-
-def NeptuneIR_FieldDivOp : NeptuneIR_Op<"field.div", [NoMemoryEffect]> {
-  let summary = "Symbolic per-element divide: res = lhs / rhs";
-  let arguments = (ins FieldElementRefType:$lhs, FieldElementRefType:$rhs);
-  let results = (outs FieldElementRefType:$res);
-  let assemblyFormat = "$lhs `,` $rhs `:` type($lhs) `,` type($rhs) `->` type($res) attr-dict ";
-}
-
-// Scalar scaling by a FloatAttr constant (symbolic)
-def NeptuneIR_FieldScaleOp : NeptuneIR_Op<"field.scale", [NoMemoryEffect]> {
-  let summary = "Symbolic per-element scaling: res = lhs * scalarAttr";
-  let arguments = (ins FieldElementRefType:$lhs, F64Attr:$scalar);
-  let results = (outs FieldElementRefType:$res);
+//------------------------------------------------------------------------------
+// neptune_ir.store
+//------------------------------------------------------------------------------
+//
+// neptune_ir.store %tmp to %field
+//   { bounds? = #neptune_ir.bounds<...> }
+//   : !neptune_ir.temp<...> to !neptune_ir.field<...>
+//
+def NeptuneIR_StoreOp
+    : NeptuneIR_Op<"store",
+        [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = "store a temp field into a destination field";
   let description = [{
-    The scalar is a FloatAttr on the op, representing a compile-time constant.
-    If you need runtime scalars, consider exposing a scalar Value operand instead.
+    Store a `TempType` into a `FieldType`. Optional `bounds` restricts
+    the write to a sub-domain (e.g., interior or boundary region).
   }];
-  let assemblyFormat = "$lhs attr-dict `:` type($lhs) `->` type($res)";
+
+  let arguments = (ins
+    NeptuneIR_TempType:$value,
+    NeptuneIR_FieldType:$var_field,
+    OptionalAttr<NeptuneIR_BoundsAttr>:$bounds
+  );
+
+  let assemblyFormat = [{
+    $value `to` $var_field attr-dict
+      `:` type($value) `to` type($var_field)
+  }];
+
+  let hasVerifier = 1;
 }
 
-// Evaluate: materialize a symbolic expression into a provided destination Value.
-// Destination is a memref or descriptor Value (first operand). The second operand
-// is the symbolic FieldElementRefType expression to materialize.
-def NeptuneIR_EvaluateOp : NeptuneIR_Op<"evaluate"> {
-  let summary = "Materialize a FieldExpr into a provided destination memref/descriptor.";
-  let arguments = (ins AnyType:$dstValue, FieldElementRefType:$expr);
-  let description = [{
-    Lowering of evaluate generates nested loops that perform memref.load/arith/memref.store,
-    writing the element-level result into the provided destination storage Value.
-  }];
-  let assemblyFormat = "$dstValue `,` $expr `:` type($dstValue) `,` type($expr) attr-dict ";
-}
 
-// Swap: semantic swap of two storage values (memref/descriptor).
-// Lowering may perform pointer swap or element-wise copy depending on backend.
-def NeptuneIR_SwapOp : NeptuneIR_Op<"swap"> {
-  let summary = "Swap two storage Values (memref/descriptors).";
-  let arguments = (ins AnyType:$aValue, AnyType:$bValue);
-  let description = [{
-    Swap semantics: lowering decides whether to perform a descriptor/pointer swap
-    or a copy (e.g., for incompatible layouts). Optional debugging/print features
-    can be implemented as runtime calls inserted by lowering.
-  }];
-  let assemblyFormat = "$aValue `,` $bValue `:` type($aValue) `,` type($bValue) attr-dict ";
-}
 
-// Optional: utility ops for reading/writing descriptor metadata (device id, stride, etc).
-// These are left generic and can be specialized if needed.
-def NeptuneIR_GetDescFieldOp : NeptuneIR_Op<"desc.get"> {
-  let summary = "Get a field from an opaque descriptor (example utility op).";
-  let arguments = (ins DescriptorType:$desc, StrAttr:$key);
-  let results = (outs AnyType:$value);
-  let description = [{
-    This is a utility op that a runtime/descriptor lowering may expand into field loads.
-  }];
-}
-
-def NeptuneIR_SetDescFieldOp : NeptuneIR_Op<"desc.set"> {
-  let summary = "Set a field on an opaque descriptor (example utility op).";
-  let arguments = (ins DescriptorType:$desc, StrAttr:$key, AnyType:$value);
-}
 
 #endif

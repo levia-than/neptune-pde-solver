@@ -15,28 +15,30 @@ git submodule update --init
 bash scripts/build.sh
 ```
 
-```bash
-bash scripts/build.sh -c
-```
-this would clean up build directory.
+`bash scripts/build.sh -c` (or `--clean`) will remove everything under the
+centralized `build/` root. `neptune-opt` is installed to
+`build/project-build/bin/neptune-opt`.
 
 ## basic arch
 `lib` directory would contain all mlir-related library.
 `src` directory would export some opt tools for the sake of testing.
 `include` would contain all tablegen files.
 
-## python front-end bridge
-`lib/Utils` builds `MLIRNeptuneIRBuilder` as a shared library that exports
-`mlir::Neptune::NeptuneIR::NeptuneIRBuilder`.  Pybind11 modules can link
-against this `.so`, include `Utils/NeptuneIRBuilder.h`, and directly call
-helpers such as `createFieldRef`/`createEvaluate` to construct NeptuneIR from
-Python.  Install step drops the shared library under
-`build/project-build/lib`, so a Python extension can dlopen it at runtime or be
-linked statically if desired.
+## NeptuneIR snapshot
+- Types: `!neptune_ir.field<element=?, bounds=?, location=?>` for storage-backed
+  fields, `!neptune_ir.temp<...>` for value-semantics temporaries.
+- Attributes: `#neptune_ir.bounds<lb=[...], ub=[...]>` for iteration domains,
+  `#neptune_ir.location<"...">` for where data lives on the mesh, optional
+  `#neptune_ir.stencil_shape<[[...], ...]>` to mark neighbor offsets.
+- Core ops: `wrap`/`unwrap` bridge buffers, `load`/`store` move between field
+  and temp, `apply` hosts the stencil body and yields scalars via `yield`,
+  neighbor reads use `access`.
 
 ## basic usage
 ```bash
-./build/project-build/bin/neptune-opt ./docs/test.mlir --symbolic-simplify --lower-evaluate-to-real-compute --canonicalize --cse --convert-scf-to-cf --convert-func-to-llvm --expand-strided-metadata --finalize-memref-to-llvm --convert-arith-to-llvm --reconcile-unrealized-casts -o lower.mlir
+./build/project-build/bin/neptune-opt docs/test.mlir \
+  --pass-pipeline='builtin.module(neptuneir-to-llvm)' \
+  -o lower.mlir
 ```
 
 ```bash
@@ -47,16 +49,15 @@ linked statically if desired.
 ./build/llvm-install/bin/llc -filetype=obj lower.ll -o lower.o
 ```
 
-## aot helpers
-Two helper CLIs live under `src/`:
+To debug individual lowering steps, you can also drive passes manually, e.g.:
 
-1. `neptune-compile` lowers a NeptuneIR module all the way to LLVM, emits
-   `after_llvm.ll`, `kernel.o`, and links a shared library exporting the
-   fixed `run_kernel` ABI from `Codegen/AOTABI.h`.
-2. `neptune-run` dlopens the produced library, prepares a tiny tensor
-   descriptor, calls `run_kernel`, and prints the first few outputs.
+```bash
+./build/project-build/bin/neptune-opt \
+  test/mlir_tests/conversion_tests/apply-2d-5pt.mlir \
+  --normalize-neptune-ir-storage --neptune-ir-stencil-to-scf
+```
 
-For Python runtime validation you can use:
-
-Python/pybind helpers are currently disabled in the build; only the C++/MLIR
-pipeline is configured by default.
+## front-ends and runtime
+`lib/Codegen` / `lib/Utils` are currently stubs; only the C++/MLIR pipeline and
+`neptune-opt` driver are built. Python/pybind helpers and AOT runners are
+planned but not shipped yet.
