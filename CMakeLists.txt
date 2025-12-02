@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(NeptuneSolver LANGUAGES CXX C)
 
+option(NEPTUNE_ENABLE_PYBIND "Build pybind11 bindings for NeptuneModuleBuilder" OFF)
+
 if(POLICY CMP0148)
   cmake_policy(SET CMP0148 OLD)
 endif()

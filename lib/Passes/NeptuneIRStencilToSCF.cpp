@@ -41,7 +41,6 @@ struct NeptuneIRTypeConverter : public TypeConverter {
 
     // FieldType -> memref
     addConversion([](FieldType fieldTy) -> std::optional<Type> {
-      auto ctx = fieldTy.getContext();
       auto elemTy = fieldTy.getElementType();
       auto bounds = fieldTy.getBounds();
       auto lb = bounds.getLb().asArrayRef();
@@ -57,7 +56,6 @@ struct NeptuneIRTypeConverter : public TypeConverter {
 
     // TempType -> memref（同样用 bounds 推 shape）
     addConversion([](TempType tempTy) -> std::optional<Type> {
-      auto ctx = tempTy.getContext();
       auto elemTy = tempTy.getElementType();
       auto bounds = tempTy.getBounds();
       auto lb = bounds.getLb().asArrayRef();
@@ -122,8 +120,33 @@ struct StoreOpLowering : public OpConversionPattern<StoreOp> {
   matchAndRewrite(StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // value / var_field 都已经被转换成 memref 了
-    rewriter.replaceOpWithNewOp<memref::CopyOp>(op, adaptor.getValue(),
-                                                adaptor.getVarField());
+    Location loc = op.getLoc();
+    Value src = adaptor.getValue();
+    Value dst = adaptor.getVarField();
+
+    if (auto bounds = op.getBounds()) {
+      ArrayRef<int64_t> lbs = bounds->getLb().asArrayRef();
+      ArrayRef<int64_t> ubs = bounds->getUb().asArrayRef();
+      if (lbs.size() != ubs.size())
+        return rewriter.notifyMatchFailure(op, "lb/ub rank mismatch");
+
+      SmallVector<OpFoldResult> offsets, sizes, strides;
+      offsets.reserve(lbs.size());
+      sizes.reserve(lbs.size());
+      strides.reserve(lbs.size());
+      for (size_t i = 0; i < lbs.size(); ++i) {
+        offsets.push_back(rewriter.getIndexAttr(lbs[i]));
+        sizes.push_back(rewriter.getIndexAttr(ubs[i] - lbs[i]));
+        strides.push_back(rewriter.getIndexAttr(1));
+      }
+      auto subview =
+          rewriter.create<memref::SubViewOp>(loc, dst, offsets, sizes,
+                                             strides);
+      rewriter.replaceOpWithNewOp<memref::CopyOp>(op, src, subview);
+      return success();
+    }
+
+    rewriter.replaceOpWithNewOp<memref::CopyOp>(op, src, dst);
     return success();
   }
 };
@@ -185,7 +208,7 @@ struct ApplyOpLowering : public OpConversionPattern<ApplyOp> {
       // ==== 然后再建最外层 for ====
       auto outerFor = rewriter.create<scf::ForOp>(
           loc, lbVals[0], ubVals[0], stepVals[0],
-          /*iterArgs=*/std::nullopt);
+          /*iterArgs=*/ValueRange());
       loops.push_back(outerFor);
 
       // ==== 再往里套 for（如果 rank > 1）====
@@ -194,7 +217,7 @@ struct ApplyOpLowering : public OpConversionPattern<ApplyOp> {
         rewriter.setInsertionPointToStart(current.getBody());
         auto inner = rewriter.create<scf::ForOp>(
             loc, lbVals[dim], ubVals[dim], stepVals[dim],
-            /*iterArgs=*/std::nullopt);
+            /*iterArgs=*/ValueRange());
         loops.push_back(inner);
         current = inner;
       }

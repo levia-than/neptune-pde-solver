@@ -24,7 +24,7 @@ u.set_dirichlet(left=0.0, right=0.0)
 
 eq = Equation(d_t(u), alpha * d_xx(u))
 
-stepper = TimeStepper(eq, method=Method.FDM, backend=BackendKind.PYTHON).build()
+stepper = TimeStepper(eq, method=Method.FDM, backend=BackendKind.MLIR_AOT).build()
 result = stepper.run(u, t_final=0.1, dt=1e-4)
 
 print("Final u field after t=0.1s:")

@@ -173,6 +173,31 @@ struct StoreOpLowering : public OpConversionPattern<NeptuneIR::StoreOp> {
     Value value = adaptor.getValue();       // 源 temp (memref)
     Value varField = adaptor.getVarField(); // 目标 field (memref)
 
+    // 如果有 bounds，则只写入子区域（subview）。
+    if (auto bounds = op.getBounds()) {
+      ArrayRef<int64_t> lbs = bounds->getLb().asArrayRef();
+      ArrayRef<int64_t> ubs = bounds->getUb().asArrayRef();
+      if (lbs.size() != ubs.size())
+        return rewriter.notifyMatchFailure(op, "lb/ub rank mismatch");
+
+      SmallVector<OpFoldResult> offsets, sizes, strides;
+      offsets.reserve(lbs.size());
+      sizes.reserve(lbs.size());
+      strides.reserve(lbs.size());
+      for (size_t i = 0; i < lbs.size(); ++i) {
+        offsets.push_back(rewriter.getIndexAttr(lbs[i]));
+        sizes.push_back(rewriter.getIndexAttr(ubs[i] - lbs[i]));
+        strides.push_back(rewriter.getIndexAttr(1));
+      }
+
+      auto subview =
+          rewriter.create<memref::SubViewOp>(loc, varField, offsets, sizes,
+                                             strides);
+      rewriter.create<memref::CopyOp>(loc, value, subview);
+      rewriter.eraseOp(op);
+      return success();
+    }
+
     rewriter.create<memref::CopyOp>(loc, value, varField);
     rewriter.eraseOp(op);
     return success();
