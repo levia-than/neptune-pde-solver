@@ -8,6 +8,8 @@ mlir_tablegen(NeptuneIROpsDialect.h.inc -gen-dialect-decls -dialect=neptune_ir)
 mlir_tablegen(NeptuneIROpsDialect.cpp.inc -gen-dialect-defs -dialect=neptune_ir)
 mlir_tablegen(NeptuneIROpsAttrDefs.h.inc -gen-attrdef-decls -attrdefs-dialect=neptune_ir)
 mlir_tablegen(NeptuneIROpsAttrDefs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=neptune_ir)
+mlir_tablegen(NeptuneIROpsEnumDefs.h.inc -gen-enum-decls)
+mlir_tablegen(NeptuneIROpsEnumDefs.cpp.inc -gen-enum-defs)
 add_public_tablegen_target(MLIRNeptuneIROpsIncGen)
 add_dependencies(mlir-headers MLIRNeptuneIROpsIncGen)
 

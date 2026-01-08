@@ -13,6 +13,19 @@
 #include <memory>
 
 namespace mlir::Neptune::NeptuneIR {
+    
+enum class DataflowBackend {
+  cpu,
+  gpu,
+};
+
+enum class RuntimeKind {
+  petsc,
+  cuda,
+  hip,
+  native,
+};
+
 #define GEN_PASS_DECL
 #include "Passes/NeptuneIRPasses.h.inc"
 

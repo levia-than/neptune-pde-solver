@@ -1,5 +1,5 @@
-add_subdirectory(Codegen)
 add_subdirectory(Dialect)
-add_subdirectory(Frontend)
 add_subdirectory(Passes)
-add_subdirectory(Utils)
+add_subdirectory(Runtime)
+add_subdirectory(Compiler)
+add_subdirectory(Pipeline)

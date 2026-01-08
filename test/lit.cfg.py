@@ -24,5 +24,5 @@ config.substitutions.append(("%PATH%", config.environment["PATH"]))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 
 tool_dirs = [config.neptune_tools_dir, config.llvm_tools_dir]
-tools = ["neptune-opt", "FileCheck"]
+tools = ["neptune-opt", "not", "FileCheck"]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

@@ -1,6 +1,9 @@
 add_mlir_library(MLIRNeptuneIRTransforms
-    NormalizeNeptuneIRStorage.cpp
-    NeptuneIRStencilToSCF.cpp
+    VerifyAndAnnotate.cpp
+    StructureLowering.cpp
+    RuntimeLowering.cpp
+    DataflowLowering.cpp
+    HighLevelConvertion.cpp
     DEPENDS MLIRNeptuneIRTransformsIncGen
 
     LINK_LIBS MLIRIR
@@ -11,4 +14,5 @@ add_mlir_library(MLIRNeptuneIRTransforms
     MLIRArithDialect
     MLIRSCFDialect
     MLIRMemRefDialect
+    MLIRLLVMDialect
 )

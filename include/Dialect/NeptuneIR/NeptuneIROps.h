@@ -15,10 +15,15 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/IR/SymbolTable.h"   // 这一行很关键
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "Dialect/NeptuneIR/NeptuneIRAttrs.h"
+
+#include "Dialect/NeptuneIR/NeptuneIROpsEnumDefs.h.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "Dialect/NeptuneIR/NeptuneIROpsTypes.h.inc"

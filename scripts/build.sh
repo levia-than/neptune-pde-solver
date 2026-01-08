@@ -1,233 +1,234 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build.sh -- 将所有构建集中到 repo_root/build 下（支持 LLVM21.x、ccache、lld 检测）
-# Usage:
-#   ./scripts/build.sh              # 正常构建 (默认 mode=all)
-#   ./scripts/build.sh --clean      # 清理 build_root 下的所有构建产物
-#   ./scripts/build.sh -m neptune   # 仅构建 C++/Neptune 可执行与库
-#   ./scripts/build.sh -m all       # 全部构建
-#
-# Env overrides:
-#   BUILD_ROOT            - 默认: <repo_root>/build
-#   NINJA_JOBS            - 并行构建数，默认: cpu cores
-#   CCACHE_DIR            - ccache 路径，默认: ~/.ccache_mymlir
-#   CCACHE_MAXSIZE        - ccache 大小，默认: 40G
-#   LLVM_TAG              - 要 clone 的 llvm tag，默认: llvmorg-21.0.0
-#   LLVM_ENABLE_PROJECTS  - 要构建的 llvm projects，默认: mlir
-#   LLVM_TARGETS_TO_BUILD - targets，默认: Host
-#   BUILD_TYPE            - 构建类型，默认: Release (可设置为 Debug)
+# ==============================================================================
+# 配置区域 (Defaults)
+# ==============================================================================
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_ROOT="${REPO_ROOT}/build"
 
-# ---------------- defaults ----------------
-: "${NINJA_JOBS:=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
-: "${CCACHE_DIR:=${HOME}/.ccache_mymlir}"
-: "${CCACHE_MAXSIZE:=40G}"
-: "${LLVM_TAG:=llvmorg-21.0.0}"
-: "${LLVM_ENABLE_PROJECTS:=mlir}"
-: "${LLVM_TARGETS_TO_BUILD:=host}"
-: "${LLVM_BUILD_TYPE:=Release}"
-: "${PROJECT_BUILD_TYPE:=Release}"
-: "${BUILD_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build}"
-
-# ---------------- parse args ----------------
-CLEAN_ONLY=0
-BUILD_MODE="all"
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -c|--clean)
-      CLEAN_ONLY=1
-      shift
-      ;;
-    -m|--mode)
-      BUILD_MODE="${2:-}"
-      shift 2
-      ;;
-    *)
-      echo "Unknown argument: $1"
-      echo "Usage: $0 [--clean] [-m {neptune|all}]"
-      exit 1
-      ;;
-  esac
-done
-
-case "${BUILD_MODE}" in
-  neptune|all)
-    BUILD_TARGET="install"
-    ;;
-  *)
-    echo "Invalid build mode: ${BUILD_MODE}"
-    echo "Supported modes: neptune, all"
-    exit 1
-    ;;
-esac
-
-# ---------------- paths ----------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-THIRD_PARTY_DIR="${REPO_ROOT}/third_party"
-LLVM_PROJ_DIR="${THIRD_PARTY_DIR}/llvm-project"
-LLVM_SRC_DIR="${LLVM_PROJ_DIR}/llvm"
-
-# centralized build root
-mkdir -p "${BUILD_ROOT}"
+# LLVM 配置
+LLVM_TAG="llvmorg-21.0.0"
+LLVM_PROJECTS="mlir"
+LLVM_TARGETS="X86"
 LLVM_BUILD_DIR="${BUILD_ROOT}/llvm-build"
 LLVM_INSTALL_DIR="${BUILD_ROOT}/llvm-install"
-TOP_BUILD_DIR="${BUILD_ROOT}/project-build"
 
-echo "=== MyMLIRProject build helper ==="
-echo "Repo root: ${REPO_ROOT}"
-echo "Build root (all artifacts here): ${BUILD_ROOT}"
-echo "Build mode: ${BUILD_MODE}"
-echo "LLVM tag: ${LLVM_TAG}"
-echo "LLVM projects: ${LLVM_ENABLE_PROJECTS}"
-echo "LLVM targets: ${LLVM_TARGETS_TO_BUILD}"
-echo "LLVM build type: ${LLVM_BUILD_TYPE}"
-echo "Project build type: ${PROJECT_BUILD_TYPE}"
-echo "Ninja jobs: ${NINJA_JOBS}"
-echo "CCACHE_DIR: ${CCACHE_DIR} (max ${CCACHE_MAXSIZE})"
-echo
+# 项目配置
+PROJECT_BUILD_TYPE="Release"
+PROJECT_BUILD_DIR="${BUILD_ROOT}/project-build"
+INSTALL_PREFIX="${BUILD_ROOT}/project-build"
 
-# -- clean mode: remove the centralized build root
-if [ "${CLEAN_ONLY}" -eq 1 ]; then
-  echo "Cleaning build root: ${BUILD_ROOT}"
-  rm -rf "${BUILD_ROOT}"
-  echo "Done."
-  exit 0
-fi
+# 并行度 & 缓存
+NINJA_JOBS="${NINJA_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+CCACHE_DIR="${HOME}/.ccache_neptune"
+export CCACHE_DIR
+export CCACHE_MAXSIZE="20G"
 
-# ---------------- prerequisites check ----------------
-for cmd in git cmake ninja ccache; do
-  if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo "ERROR: required command not found: ${cmd}"
-    echo "Please install it (e.g. apt/brew/pacman) and re-run."
-    exit 1
-  fi
+# 颜色输出
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[Neptune Build]${NC} $1"; }
+warn() { echo -e "${YELLOW}[Warning]${NC} $1"; }
+
+# ==============================================================================
+# 参数解析
+# ==============================================================================
+CLEAN=0
+REBUILD_LLVM=0
+ENABLE_PETSC=OFF
+PETSC_DIR=""
+PETSC_ARCH=""
+MODE="all"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--clean) CLEAN=1; shift ;;
+        --rebuild-llvm) REBUILD_LLVM=1; shift ;;
+        --enable-petsc) ENABLE_PETSC=ON; shift ;;
+        --petsc-dir) PETSC_DIR="$2"; shift 2 ;;
+        --petsc-arch) PETSC_ARCH="$2"; shift 2 ;;
+        -m|--mode) MODE="$2"; shift 2 ;;
+        --project-debug) PROJECT_BUILD_TYPE="Debug"; shift ;;
+        --project-release) PROJECT_BUILD_TYPE="Release"; shift ;;
+        *) echo "Unknown arg: $1"; exit 1 ;;
+    esac
 done
 
-# choose compilers (prefer clang)
-CC_CANDIDATE="clang"
-CXX_CANDIDATE="clang++"
-if [ "$(uname -s)" = "Darwin" ]; then
-  # prefer Homebrew llvm if present
-  if [ -x "/opt/homebrew/opt/llvm/bin/clang" ]; then
-    CC_CANDIDATE="/opt/homebrew/opt/llvm/bin/clang"
-    CXX_CANDIDATE="/opt/homebrew/opt/llvm/bin/clang++"
-  elif [ -x "/usr/local/opt/llvm/bin/clang" ]; then
-    CC_CANDIDATE="/usr/local/opt/llvm/bin/clang"
-    CXX_CANDIDATE="/usr/local/opt/llvm/bin/clang++"
-  fi
-fi
-if ! command -v "${CC_CANDIDATE}" >/dev/null 2>&1; then
-  if command -v gcc >/dev/null 2>&1; then
-    CC_CANDIDATE="gcc"
-    CXX_CANDIDATE="g++"
-  else
-    echo "ERROR: no suitable C/C++ compiler found (clang or gcc)."
-    exit 1
-  fi
-fi
-echo "Using C compiler: ${CC_CANDIDATE}"
-echo "Using C++ compiler: ${CXX_CANDIDATE}"
-echo
-
-# ---------------- ensure llvm-project exists ----------------
-if [ ! -d "${LLVM_PROJ_DIR}" ]; then
-  echo "llvm-project not found under ${LLVM_PROJ_DIR}. Cloning ${LLVM_TAG} (shallow)..."
-  mkdir -p "${THIRD_PARTY_DIR}"
-  git -C "${THIRD_PARTY_DIR}" clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git llvm-project
-fi
-if [ ! -d "${LLVM_SRC_DIR}" ]; then
-  echo "ERROR: llvm source not found at ${LLVM_SRC_DIR}"
-  exit 1
+if [ "$CLEAN" -eq 1 ]; then
+    warn "Cleaning build root: ${BUILD_ROOT}"
+    rm -rf "${BUILD_ROOT}"
+    exit 0
 fi
 
-# ---------------- ccache setup ----------------
+# ==============================================================================
+# 1. 环境准备 (Compiler & Ccache)
+# ==============================================================================
+mkdir -p "${BUILD_ROOT}"
 mkdir -p "${CCACHE_DIR}"
-export CCACHE_DIR="${CCACHE_DIR}"
-ccache --max-size="${CCACHE_MAXSIZE}" >/dev/null 2>&1 || true
-echo "ccache stats (before):"
-ccache -s || true
-echo
 
-# ---------------- lld detection ----------------
-ENABLE_LLD=OFF
-if command -v ld.lld >/dev/null 2>&1 || command -v lld >/dev/null 2>&1; then
-  ENABLE_LLD=ON
-  echo "lld detected -> will enable LLVM_ENABLE_LLD=ON"
+# 探测基础编译器
+RAW_CC="gcc"
+RAW_CXX="g++"
+if command -v clang >/dev/null 2>&1; then
+    RAW_CC="clang"
+    RAW_CXX="clang++"
+fi
+
+# 启用 CCACHE (劫持编译器变量)
+# 这是确保所有子进程(包括 PETSc configure)都能用上 ccache 的最强手段
+USE_CCACHE=OFF
+if command -v ccache >/dev/null 2>&1; then
+    USE_CCACHE=ON
+    log "Enabling ccache globally..."
+    
+    # 设置 CMake Launcher (给 CMake 项目用)
+    CMAKE_CCACHE_ARGS=(
+        "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+        "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    )
+    
+    # 设置 Shell 变量 (给 configure 脚本用)
+    export CC="ccache ${RAW_CC}"
+    export CXX="ccache ${RAW_CXX}"
 else
-  ENABLE_LLD=OFF
-  echo "lld NOT detected -> LLVM_ENABLE_LLD will be OFF (avoids -fuse-ld=lld test failure)"
-  echo "Install lld to enable it (Debian/Ubuntu: sudo apt install lld; macOS: brew install llvm)."
-fi
-echo
-
-# ---------------- 1) Configure & build LLVM (out-of-source) ----------------
-if [ ! -f "${LLVM_BUILD_DIR}/build.ninja" ]; then
-  echo "Configuring LLVM build (source: ${LLVM_SRC_DIR}, build: ${LLVM_BUILD_DIR})..."
-  cmake -G Ninja \
-    -S "${LLVM_SRC_DIR}" \
-    -B "${LLVM_BUILD_DIR}" \
-    -DCMAKE_BUILD_TYPE="${LLVM_BUILD_TYPE}" \
-    -DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL_DIR}" \
-    -DLLVM_ENABLE_PROJECTS="${LLVM_ENABLE_PROJECTS}" \
-    -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD}" \
-    -DLLVM_CCACHE_BUILD=true \
-    -DLLVM_ENABLE_LLD=${ENABLE_LLD} \
-    -DLLVM_INSTALL_UTILS=ON \
-    -DLLVM_INCLUDE_TESTS=ON \
-    -DLLVM_BUILD_TESTS=OFF \
-    -DCMAKE_C_COMPILER="${CC_CANDIDATE}" \
-    -DCMAKE_CXX_COMPILER="${CXX_CANDIDATE}"
-else
-  echo "LLVM build already configured. Skipping..."
+    CMAKE_CCACHE_ARGS=()
+    export CC="${RAW_CC}"
+    export CXX="${RAW_CXX}"
 fi
 
-echo
-echo "Building + installing LLVM (this may take a while)..."
-cmake --build "${LLVM_BUILD_DIR}" --target install -- -j"${NINJA_JOBS}"
-echo "LLVM installed to: ${LLVM_INSTALL_DIR}"
-echo
+# 检测 LLD
+USE_LLD=OFF
+if command -v lld >/dev/null 2>&1; then USE_LLD=ON; fi
 
-# ---------------- 2) Configure & build top-level project (use installed LLVM) ----------------
-if [ ! -f "${TOP_BUILD_DIR}/build.ninja" ]; then
-  echo "Configuring top-level project (build dir: ${TOP_BUILD_DIR})..."
-  cmake -G Ninja \
-    -S "${REPO_ROOT}" \
-    -B "${TOP_BUILD_DIR}" \
-    -DCMAKE_BUILD_TYPE="${PROJECT_BUILD_TYPE}" \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-    -DLLVM_DIR="${LLVM_INSTALL_DIR}/lib/cmake/llvm" \
-    -DMLIR_DIR="${LLVM_INSTALL_DIR}/lib/cmake/mlir" \
-    -DLLVM_EXTERNAL_LIT="${LLVM_BUILD_DIR}/bin/llvm-lit" \
-    -DCMAKE_INSTALL_PREFIX="${TOP_BUILD_DIR}" \
-    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-else
-  echo "Top-level project already configured. Skipping..."
-fi
+log "Compiler: ${CC} / ${CXX}"
+log "Jobs: ${NINJA_JOBS}, Linker: lld=${USE_LLD}"
 
-echo
-echo "Building top-level project..."
-cmake --build "${TOP_BUILD_DIR}" --target "${BUILD_TARGET}" -j"${NINJA_JOBS}"
+# ==============================================================================
+# 2. 构建 LLVM (Lazy Build)
+# ==============================================================================
+build_llvm() {
+    if [ -f "${LLVM_INSTALL_DIR}/bin/mlir-tblgen" ] && [ "$REBUILD_LLVM" -eq 0 ]; then
+        log "LLVM found in ${LLVM_INSTALL_DIR}. Skipping rebuild."
+        return
+    fi
 
-# ---------------- 3) run tests if present ----------------
-if [ -d "${REPO_ROOT}/test" ]; then
-  echo
-  echo "Running tests with cmake&lit..."
-  cmake --build "${TOP_BUILD_DIR}" --target check-neptune -j"${NINJA_JOBS}" || {
-    echo "Some tests failed (see above)."
-  }
-fi
+    log "Building LLVM (${LLVM_TAG})..."
+    local LLVM_SRC="${REPO_ROOT}/third_party/llvm-project"
+    if [ ! -d "${LLVM_SRC}" ]; then
+        mkdir -p "${REPO_ROOT}/third_party"
+        git clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git "${LLVM_SRC}"
+    fi
 
-# [NEW] Create a symlink to compile_commands.json in the project root
-if [ -f "${TOP_BUILD_DIR}/compile_commands.json" ]; then
-    echo "Creating symlink for compile_commands.json..."
-    ln -sf "${TOP_BUILD_DIR}/compile_commands.json" "${REPO_ROOT}/compile_commands.json"
-    echo "Symlink created at ${REPO_ROOT}/compile_commands.json"
-fi
+    # 注意：LLVM 自己有 LLVM_CCACHE_BUILD 选项，但也吃 CMAKE_XXX_LAUNCHER
+    cmake -G Ninja -S "${LLVM_SRC}/llvm" -B "${LLVM_BUILD_DIR}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL_DIR}" \
+        -DLLVM_ENABLE_PROJECTS="${LLVM_PROJECTS}" \
+        -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}" \
+        -DLLVM_ENABLE_ASSERTIONS=ON \
+        -DLLVM_ENABLE_LLD="${USE_LLD}" \
+        -DLLVM_CCACHE_BUILD=ON \
+        -DLLVM_INCLUDE_TESTS=OFF \
+        "${CMAKE_CCACHE_ARGS[@]}"
 
-echo
-echo "Build finished. ccache stats (after):"
-ccache -s || true
-echo "All artifacts are under: ${BUILD_ROOT}"
+    cmake --build "${LLVM_BUILD_DIR}" --target install -j"${NINJA_JOBS}"
+}
+
+# ==============================================================================
+# 3. 准备 PETSc (集成 Ccache & MPICH)
+# ==============================================================================
+setup_petsc() {
+    if [ "$ENABLE_PETSC" != "ON" ]; then return; fi
+
+    if [ -z "${PETSC_DIR}" ]; then
+        local PETSC_VERSION="v3.20.6"
+        local PETSC_SRC="${BUILD_ROOT}/petsc-src"
+        local PETSC_INSTALL="${BUILD_ROOT}/petsc-install"
+
+        if [ -f "${PETSC_INSTALL}/lib/libpetsc.so" ]; then
+            log "Using bootstrapped PETSc at ${PETSC_INSTALL}"
+            PETSC_DIR="${PETSC_INSTALL}"
+            return
+        fi
+
+        log "Bootstrapping PETSc ${PETSC_VERSION}..."
+        if [ ! -d "${PETSC_SRC}" ]; then
+            log "Cloning PETSc tag ${PETSC_VERSION}..."
+            git clone --depth 1 --branch "${PETSC_VERSION}" https://gitlab.com/petsc/petsc.git "${PETSC_SRC}"
+        fi
+
+        pushd "${PETSC_SRC}" > /dev/null
+        
+        # 因为我们在脚本开头已经 export CC="ccache clang"
+        # 所以这里直接传 $CC 就行了，PETSc 会识别带空格的编译器命令
+        ./configure \
+            --prefix="${PETSC_INSTALL}" \
+            --with-cc="${CC}" \
+            --with-cxx="${CXX}" \
+            --with-fc=0 \
+            --download-mpich=1 \
+            --with-debugging=0 \
+            --with-shared-libraries=1 \
+            --download-f2cblaslapack=1
+            
+        make -j"${NINJA_JOBS}"
+        make install
+        popd > /dev/null
+
+        PETSC_DIR="${PETSC_INSTALL}"
+    fi
+}
+
+# ==============================================================================
+# 4. 构建 Neptune Project
+# ==============================================================================
+build_neptune() {
+    log "Configuring Neptune..."
+    
+    local CMAKE_ARGS=(
+        "-G" "Ninja"
+        "-S" "${REPO_ROOT}"
+        "-B" "${PROJECT_BUILD_DIR}"
+        "-DCMAKE_BUILD_TYPE=${PROJECT_BUILD_TYPE}"
+        "-DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}"
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+        "-DMLIR_DIR=${LLVM_INSTALL_DIR}/lib/cmake/mlir"
+        "-DLLVM_DIR=${LLVM_INSTALL_DIR}/lib/cmake/llvm"
+        "-DLLVM_EXTERNAL_LIT=${LLVM_BUILD_DIR}/bin/llvm-lit"
+        "-DNEPTUNE_ENABLE_PETSC=${ENABLE_PETSC}"
+        "${CMAKE_CCACHE_ARGS[@]}" # 自动加上 launcher
+    )
+
+    if [ -n "${PETSC_DIR}" ]; then
+        CMAKE_ARGS+=("-DPETSC_DIR=${PETSC_DIR}")
+    fi
+    if [ -n "${PETSC_ARCH}" ]; then
+        CMAKE_ARGS+=("-DPETSC_ARCH=${PETSC_ARCH}")
+    fi
+
+    cmake "${CMAKE_ARGS[@]}"
+
+    log "Building Neptune..."
+    cmake --build "${PROJECT_BUILD_DIR}" --target install -j"${NINJA_JOBS}"
+
+    ln -sf "${PROJECT_BUILD_DIR}/compile_commands.json" "${REPO_ROOT}/compile_commands.json"
+
+    log "Running Tests..."
+    cmake --build "${PROJECT_BUILD_DIR}" --target check-neptune || warn "Tests failed!"
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
+build_llvm
+setup_petsc
+build_neptune
+
+log "Build Complete!"
+echo "=================================================================="
+echo -e "${GREEN}To use the Python frontend, set PYTHONPATH:${NC}"
+echo "export PYTHONPATH=${REPO_ROOT}/python_frontend:\$PYTHONPATH"
+echo "=================================================================="

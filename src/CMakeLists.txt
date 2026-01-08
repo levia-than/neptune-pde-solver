@@ -12,6 +12,7 @@ set(LIBS
     MLIRCAPIRegisterEverything
     MLIRNeptuneIR
     MLIRNeptuneIRTransforms
+    MLIRNeptuneIRPassesPipeline
 )
 
 add_llvm_executable(neptune-opt neptuneOpt.cpp

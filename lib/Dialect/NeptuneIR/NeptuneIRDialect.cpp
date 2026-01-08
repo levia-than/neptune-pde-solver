@@ -17,6 +17,8 @@
 #include "mlir/Support/TypeID.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include "Dialect/NeptuneIR/NeptuneIROpsEnumDefs.cpp.inc"
+
 #define GET_ATTRDEF_CLASSES
 #include "Dialect/NeptuneIR/NeptuneIROpsAttrDefs.cpp.inc"
 

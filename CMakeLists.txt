@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(NeptuneSolver LANGUAGES CXX C)
 
-option(NEPTUNE_ENABLE_PYBIND "Build pybind11 bindings for NeptuneModuleBuilder" OFF)
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
+
+# Always build the Python _neptune_mlir extension so the MLIR backend is available.
+set(NEPTUNE_ENABLE_PETSC OFF CACHE BOOL "Enable PETSc-based solver integration")
 
 if(POLICY CMP0148)
   cmake_policy(SET CMP0148 OLD)
@@ -15,6 +18,17 @@ enable_testing()
 
 find_package(LLVM REQUIRED CONFIG)
 find_package(MLIR REQUIRED CONFIG)
+find_package(pybind11 REQUIRED)
+
+if(NEPTUNE_ENABLE_PETSC)
+  find_package(PETSc REQUIRED)
+  set(NEPTUNE_PETSC_VERSION "${PETSC_VERSION}")
+  message(STATUS "PETSc enabled (version: ${PETSC_VERSION})")
+  add_executable(petsc_smoke cmake/petsc_smoke_test.c)
+  target_link_libraries(petsc_smoke PRIVATE PETSc::PETSc)
+else()
+  set(NEPTUNE_PETSC_VERSION "OFF")
+endif()
 
 set(LLVM_LIT_ARGS "-sv" CACHE STRING "Default options for lit")
 
@@ -47,6 +61,7 @@ add_definitions(${LLVM_DEFINITIONS})
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(src)
+add_subdirectory(python_frontend)
 
 # 7. 添加测试（可选，需启用BUILD_TESTING）
 add_subdirectory(test)

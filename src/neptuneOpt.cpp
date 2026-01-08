@@ -29,34 +29,11 @@
 #include "Dialect/NeptuneIR/NeptuneIRDialect.h"
 #include "Dialect/NeptuneIR/NeptuneIROps.h"
 #include "Passes/NeptuneIRPasses.h"
+#include "Passes/NeptuneIRPassesPipeline.h"
 #include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace mlir::Neptune::NeptuneIR;
-
-void neptunePipelineBuilder(mlir::OpPassManager &pm) {
-  pm.addPass(createNormalizeNeptuneIRStorage());
-  pm.addPass(createNeptuneIRStencilToSCF());
-
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-
-  pm.addPass(createSCFToControlFlowPass());
-  pm.addPass(createArithToLLVMConversionPass());
-  pm.addPass(createCanonicalizerPass());
-
-  pm.addPass(createConvertControlFlowToLLVMPass());
-  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(createConvertFuncToLLVMPass());
-  pm.addPass(createCanonicalizerPass());
-
-  pm.addPass(createReconcileUnrealizedCastsPass());
-
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createSCCPPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(createSymbolDCEPass());
-}
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
@@ -64,10 +41,7 @@ int main(int argc, char **argv) {
   registry.insert<NeptuneIRDialect>();
   mlir::registerAllPasses();
   Neptune::NeptuneIR::registerPasses();
-
-  PassPipelineRegistration<>("neptuneir-to-llvm",
-                             "Run passes to lower the NeptuneIR to LLVM IR.",
-                             neptunePipelineBuilder);
+  mlir::Neptune::NeptuneIR::registerNeptunePipelines(); 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Neptune optimizer driver.\n", registry));
 }

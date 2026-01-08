@@ -11,8 +11,14 @@
 # Neptune pde solver
 
 ```bash
+pip install "pybind11[global]"
 git submodule update --init
 bash scripts/build.sh
+
+# enable PETSc (optional)
+NEPTUNE_ENABLE_PETSC=ON PETSC_DIR=/path/to/petsc PETSC_ARCH=arch-name bash scripts/build.sh
+# or use CLI flags:
+# ./scripts/build.sh --enable-petsc --petsc-dir /path/to/petsc --petsc-arch arch-name
 ```
 
 `bash scripts/build.sh -c` (or `--clean`) will remove everything under the
@@ -61,3 +67,9 @@ To debug individual lowering steps, you can also drive passes manually, e.g.:
 `lib/Codegen` / `lib/Utils` are currently stubs; only the C++/MLIR pipeline and
 `neptune-opt` driver are built. Python/pybind helpers and AOT runners are
 planned but not shipped yet.
+
+## PETSc integration
+- Enable at configure time with `-DNEPTUNE_ENABLE_PETSC=ON` (or `--enable-petsc` for `scripts/build.sh`).
+- If `PETSC_DIR` points to an install prefix (or use `-DCMAKE_PREFIX_PATH=/path/to/petsc-install`), CMake will find it via `FindPETSc.cmake`. The build script still bootstraps into `build/petsc-install` if nothing is provided.
+- Override paths via `PETSC_SRC_DIR`/`PETSC_INSTALL_DIR` env vars if you don't want to use `build/`.
+- When enabled, link PETSc consumers against `PETSc::PETSc` (imported target from the find module). A small smoke binary `petsc_smoke` is built to validate the linkage.

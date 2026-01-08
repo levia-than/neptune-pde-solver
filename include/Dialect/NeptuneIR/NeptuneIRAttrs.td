@@ -2,6 +2,7 @@
 #define NEPTUNEIR_NEPTUNEIRATTRS_TD
 
 include "mlir/IR/BuiltinAttributes.td"
+include "mlir/IR/EnumAttr.td"
 include "NeptuneIRDialect.td"
 
 // 迭代域 [lb[i], ub[i])，用于 interior / boundary / 子域等。
@@ -47,7 +48,7 @@ def NeptuneIR_LocationAttr
   }];
 }
 
-// （可选）Stencil 形状描述：一组 offset 向量
+// Stencil 形状描述：一组 offset 向量
 // 例如 [ [-1,0,0], [0,0,0], [1,0,0] ] 表示 1D 三点 stencil。
 def NeptuneIR_StencilShapeAttr
     : NeptuneIR_Attr<"StencilShape", "stencil_shape"> {
@@ -72,6 +73,15 @@ def NeptuneIR_StencilShapeAttr
   let assemblyFormat = [{
     `<` $offsets `>`
   }];
+}
+
+def NeptuneIR_TimeMethodAttr : I32EnumAttr<"TimeMethod", "", [
+  I32EnumAttrCase<"kExplicit", 0, "explicit">,
+  I32EnumAttrCase<"kImplicitNonlinear", 1, "implicit_nonlinear">,
+  I32EnumAttrCase<"kImplicitLinear", 2, "implicit_linear">,
+  I32EnumAttrCase<"kRuntime", 3, "runtime">,
+]> {
+  let cppNamespace = "::mlir::Neptune::NeptuneIR";
 }
 
 #endif // NEPTUNEIR_NEPTUNEIRATTRS_TD

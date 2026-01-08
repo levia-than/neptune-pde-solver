@@ -2,7 +2,9 @@
 */.DS_Store
 build/
 .cache/
+.ccache*/
 compile_commands.json
 .vscode/
 __pycache__/
 *.egg-info/
+.pytest_cache/
